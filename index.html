@@ -190,14 +190,38 @@
     const frame = document.getElementById("frame");
     const value = document.getElementById("value");
 
+    const HOME = parseFloat(getComputedStyle(root).getPropertyValue("--current"));
+    const SLIDE_BACK_MS = 600;
+    let slideBack = null;
+
     function setProgress(percent) {
-      const p = Math.round(Math.min(100, Math.max(0, percent)));
+      const p = Math.min(100, Math.max(0, percent));
       const index = Math.round((p / 100) * (FRAMES.length - 1));
       root.style.setProperty("--progress", p);
       frame.src = "data:image/jpeg;base64," + FRAMES[index];
-      value.textContent = p + "%";
-      progress.setAttribute("aria-valuenow", p);
+      value.textContent = Math.round(p) + "%";
+      progress.setAttribute("aria-valuenow", Math.round(p));
       return p;
+    }
+
+    function stopSlideBack() {
+      cancelAnimationFrame(slideBack);
+      slideBack = null;
+    }
+
+    function startSlideBack() {
+      const from = current;
+      const start = performance.now();
+
+      function step(now) {
+        const t = Math.min(1, (now - start) / SLIDE_BACK_MS);
+        const eased = 1 - Math.pow(1 - t, 3);
+        current = setProgress(from + (HOME - from) * eased);
+        slideBack = t < 1 ? requestAnimationFrame(step) : null;
+      }
+
+      stopSlideBack();
+      slideBack = requestAnimationFrame(step);
     }
 
     function percentFromPointer(event) {
@@ -205,9 +229,10 @@
       return ((event.clientX - rect.left) / rect.width) * 100;
     }
 
-    let current = setProgress(40);
+    let current = setProgress(HOME);
 
     progress.addEventListener("pointerdown", (event) => {
+      stopSlideBack();
       progress.setPointerCapture(event.pointerId);
       progress.classList.add("dragging");
       current = setProgress(percentFromPointer(event));
@@ -219,16 +244,24 @@
       }
     });
 
-    progress.addEventListener("pointerup", () => progress.classList.remove("dragging"));
-    progress.addEventListener("pointercancel", () => progress.classList.remove("dragging"));
+    function release() {
+      progress.classList.remove("dragging");
+      startSlideBack();
+    }
+
+    progress.addEventListener("pointerup", release);
+    progress.addEventListener("pointercancel", release);
 
     progress.addEventListener("keydown", (event) => {
       const steps = { ArrowLeft: -1, ArrowDown: -1, ArrowRight: 1, ArrowUp: 1, PageDown: -10, PageUp: 10 };
       if (event.key in steps) {
+        stopSlideBack();
         current = setProgress(current + steps[event.key]);
       } else if (event.key === "Home") {
+        stopSlideBack();
         current = setProgress(0);
       } else if (event.key === "End") {
+        stopSlideBack();
         current = setProgress(100);
       } else {
         return;
